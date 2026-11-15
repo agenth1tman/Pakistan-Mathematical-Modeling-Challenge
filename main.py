@@ -11,10 +11,31 @@ import matplotlib.colors as mcolors
 from shapely.geometry import Polygon, Point, LineString
 from rasterstats import zonal_stats
 
+#region PATHS
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+DATA_DIR = os.path.join(BASE_DIR, "data")
+RASTER_DIR = os.path.join(DATA_DIR, "rasters")
+ASSETS_DIR = os.path.join(BASE_DIR, "assets")
+RESULTS_DIR = os.path.join(BASE_DIR, "results")
+os.makedirs(RESULTS_DIR, exist_ok=True)
+
+
+def data_path(name):
+    return os.path.join(DATA_DIR, name)
+
+
+def raster_path(name):
+    return os.path.join(RASTER_DIR, name)
+
+
+def results_path(name):
+    return os.path.join(RESULTS_DIR, name)
+#endregion
+
 #region INITIAL LOADING
 current_season = "Dry"  # "Dry" or "Wet"
 
-shapefile_path = "WDPA_WDOECM_Mar2026_Public_884_shp-polygons.shp"  # Downloaded from https://www.protectedplanet.net/884 (thank you reddit)
+shapefile_path = os.path.join(DATA_DIR, "boundary", "WDPA_WDOECM_Mar2026_Public_884_shp-polygons.shp")  # Downloaded from https://www.protectedplanet.net/884 (thank you reddit)
 park = gpd.read_file(shapefile_path)
 park = park.to_crs(epsg=32733)
 
@@ -71,14 +92,14 @@ grid_inside['k'] = 0
 #endregion
 
 #region LOAD INFRASTRUCTURE AND WATER HOLES AND OTHER THINGS THAT MAKE MY MIND GO WROOM
-roads = gpd.read_file("etosha_roads.geojson")  # roads are from OpenStreetMap (downloaded from overpass-turbo.eu)
+roads = gpd.read_file(data_path("etosha_roads.geojson"))  # roads are from OpenStreetMap (downloaded from overpass-turbo.eu)
 roads = roads.to_crs(epsg=32733)
 all_roads = roads.geometry.union_all()
 
 # load the csv that we made (we made it using x and y coordinate of every waterhole pixel on original map on (https://www.etoshanationalpark.org/media/Etosha-Map-2025.jpg) and we did the same for camps
-camps_df = pd.read_csv("etosha_camps.csv")
-waterholes_df = pd.read_csv("etosha_waterholes.csv")
-gates_df = pd.read_csv("etosha_gates.csv")
+camps_df = pd.read_csv(data_path("etosha_camps.csv"))
+waterholes_df = pd.read_csv(data_path("etosha_waterholes.csv"))
+gates_df = pd.read_csv(data_path("etosha_gates.csv"))
 
 P_xmin = 182  # x pixel of the furthest left tip
 P_xmax = 9795  # x pixel of the furthest right tip
@@ -125,7 +146,7 @@ grid_inside['Has_Gate'] = grid_inside.geometry.intersects(all_gates).astype(int)
 grid_inside['Has_Water'] = (grid_inside['Dist_to_Water'] <= 10).astype(int)
 
 # we made these zones using our custom zone maker
-zones_df = pd.read_csv("manual_zones.csv")
+zones_df = pd.read_csv(data_path("manual_zones.csv"))
 
 if 'Zone_Number' in grid_inside.columns:  # this stupid thing costed me so much time.
     grid_inside = grid_inside.drop(columns=['Zone_Number'])
@@ -135,7 +156,7 @@ grid_inside = grid_inside.merge(zones_df[['Cell_ID', 'Zone_Number']], on='Cell_I
 
 #region TERRAIN & FORAGE CLASSIFICATION
 # load manually digitized data we made manually; the biome data is based on (https://www.researchgate.net/figure/Map-of-the-study-area-Etosha-National-Park-Namibia-The-locations-of-sampling-sites_fig1_318895272)
-manual_data = pd.read_csv("manual_biomes.csv")
+manual_data = pd.read_csv(data_path("manual_biomes.csv"))
 
 if 'Terrain_Type' in grid_inside.columns:
     grid_inside = grid_inside.drop(columns=['Terrain_Type'])
@@ -154,10 +175,10 @@ else:
 # FOR NDVI
 # load up ndvi tif files of both seasons and both historical files
 ndviFiles = {
-    'Wet': 'etosha_ndvi_wet.tif',
-    'Dry': 'etosha_ndvi_dry.tif',
-    'Min': 'etosha_ndvi_min.tif',
-    'Max': 'etosha_ndvi_max.tif'
+    'Wet': raster_path("etosha_ndvi_wet.tif"),
+    'Dry': raster_path("etosha_ndvi_dry.tif"),
+    'Min': raster_path("etosha_ndvi_min.tif"),
+    'Max': raster_path("etosha_ndvi_max.tif")
 }
 
 for name, tiff_path in ndviFiles.items():
@@ -184,10 +205,10 @@ grid_inside['Raw_NDVI'] = grid_inside[f'Raw_NDVI_{current_season}']
 # FOR NDMI
 # load up ndmi tif files of both seasons (SWIR and NIR bands)
 ndmiFiles = {
-    'Wet': {'swir': 'modis_swir_wet.tif', 'nir': 'modis_nir_wet.tif'},
-    'Dry': {'swir': 'modis_swir_dry.tif', 'nir': 'modis_nir_dry.tif'},
-    'Max': {'swir': 'modis_swir_max.tif', 'nir': 'modis_nir_max.tif'},
-    'Min': {'swir': 'modis_swir_min.tif', 'nir': 'modis_nir_min.tif'}
+    'Wet': {'swir': raster_path("modis_swir_wet.tif"), 'nir': raster_path("modis_nir_wet.tif")},
+    'Dry': {'swir': raster_path("modis_swir_dry.tif"), 'nir': raster_path("modis_nir_dry.tif")},
+    'Max': {'swir': raster_path("modis_swir_max.tif"), 'nir': raster_path("modis_nir_max.tif")},
+    'Min': {'swir': raster_path("modis_swir_min.tif"), 'nir': raster_path("modis_nir_min.tif")}
 }
 
 for name, bands in ndmiFiles.items():
@@ -223,9 +244,9 @@ def Update_Forage():
 Update_Forage()
 
 # This da time to camp for each cell
-if os.path.exists('routing_wet.csv') and os.path.exists('routing_dry.csv'):  # added this cuz if file doesnt exist we have a chance to generate it without getting smacked with an error
-    r_wet = pd.read_csv('routing_wet.csv')
-    r_dry = pd.read_csv('routing_dry.csv')
+if os.path.exists(data_path("routing_wet.csv")) and os.path.exists(data_path("routing_dry.csv")):  # added this cuz if file doesnt exist we have a chance to generate it without getting smacked with an error
+    r_wet = pd.read_csv(data_path("routing_wet.csv"))
+    r_dry = pd.read_csv(data_path("routing_dry.csv"))
 
     grid_inside = grid_inside.merge(r_wet, on='Cell_ID', how='left')
     grid_inside = grid_inside.merge(r_dry, on='Cell_ID', how='left')
@@ -238,7 +259,7 @@ if os.path.exists('routing_wet.csv') and os.path.exists('routing_dry.csv'):  # a
 
 #region CALCULATIONS OF VARIABLES USING FORMULAS
 def Calculate_Time_To_Camp():
-    nodes_df = pd.read_csv('routing_nodes.csv')
+    nodes_df = pd.read_csv(data_path("routing_nodes.csv"))
     nodes_df = nodes_df.merge(grid_inside[['Cell_ID', 'geometry']], on='Cell_ID', how='inner')
 
     times_wet = []
@@ -305,7 +326,7 @@ def Calculate_Time_To_Camp():
 
             ray_wet_direct = LineString([origin_centroid, nearest_camp_geom])
             time_wet_direct, matches_wet = calculate_segment_time(ray_wet_direct, "Wet")
-            pan_count_direct = ((matches_wet['Terrain_Type'] == 'Salt Pan') & (matches_wet['Has_Road'] == 0)).total()
+            pan_count_direct = ((matches_wet['Terrain_Type'] == 'Salt Pan') & (matches_wet['Has_Road'] == 0)).sum()
 
             if pan_count_direct < 2:
                 best_wet_time = time_wet_direct
@@ -315,7 +336,7 @@ def Calculate_Time_To_Camp():
                 ray_node = LineString([origin_centroid, node_centroid])
 
                 j, matches_node = calculate_segment_time(ray_node, "Wet")
-                node_pan_count = ((matches_node['Terrain_Type'] == 'Salt Pan') & (matches_node['Has_Road'] == 0)).total()
+                node_pan_count = ((matches_node['Terrain_Type'] == 'Salt Pan') & (matches_node['Has_Road'] == 0)).sum()
 
                 if node_pan_count < 2:
                     time_to_node, j = calculate_segment_time(ray_node, "Wet", matches=matches_node)
@@ -335,8 +356,8 @@ def Calculate_Time_To_Camp():
     df_wet = grid_inside[['Cell_ID', 'Time_to_Camp_Wet', 'Speed_Wet']]
     df_dry = grid_inside[['Cell_ID', 'Time_to_Camp_Dry', 'Speed_Dry']]
 
-    df_wet.to_csv('routing_wet.csv', index=False)
-    df_dry.to_csv('routing_dry.csv', index=False)
+    df_wet.to_csv(data_path("routing_wet.csv"), index=False)
+    df_dry.to_csv(data_path("routing_dry.csv"), index=False)
 
     grid_inside['Time_to_Camp'] = grid_inside[f'Time_to_Camp_{current_season}']
 
@@ -419,7 +440,7 @@ def HM_APS():
     ax.tick_params(axis='both', which='major', labelsize=12)
 
     plt.tight_layout()
-    plt.savefig('hm_aps.pdf', format='pdf', bbox_inches='tight')
+    plt.savefig(results_path("hm_aps.pdf"), format='pdf', bbox_inches='tight')
     plt.show()
 
 
@@ -1288,8 +1309,8 @@ def Run_Sensitivity_Analysis():
         })
 
     results_df = pd.DataFrame(sensitivity_results)
-    results_df.to_csv('Sensitivity_Results_Fast.csv', index=False)
-    print("\nData successfully saved to 'Sensitivity_Results_Fast.csv'!")
+    results_df.to_csv(results_path("Sensitivity_Results_Fast.csv"), index=False)
+    print(f"\nData successfully saved to {results_path('Sensitivity_Results_Fast.csv')}")
 
     plt.figure(figsize=(10, 6))
 
@@ -1313,7 +1334,7 @@ def Run_Sensitivity_Analysis():
     plt.tight_layout()
 
     # Save it directly as a high-res Vector Graphic for your paper!
-    plt.savefig('Phi_Parabola_Analysis.pdf', format='pdf', bbox_inches='tight')
+    plt.savefig(results_path("Phi_Parabola_Analysis.pdf"), format='pdf', bbox_inches='tight')
     plt.show()
 
 def Run_Budget_Analysis():
@@ -1360,12 +1381,12 @@ def Run_Budget_Analysis():
         })
 
     results_df = pd.DataFrame(sensitivity_results)
-    results_df.to_csv('Sensitivity_Results_Fast.csv', index=False)
-    print("\nData successfully saved to 'Sensitivity_Results_Fast.csv'!")
+    results_df.to_csv(results_path("Sensitivity_Results_Fast.csv"), index=False)
+    print(f"\nData successfully saved to {results_path('Sensitivity_Results_Fast.csv')}")
 
     plt.figure(figsize=(10, 6))
 
-    plt.plot(results_df['Lambda'], results_df['Global_Phi'],
+    plt.plot(results_df['Split_S'], results_df['Global_Phi'],
              marker='^', markersize=10, color='forestgreen', linewidth=3, label='Global Protection Score (Φ)')
 
     best_idx = results_df['Global_Phi'].idxmax()
@@ -1374,21 +1395,21 @@ def Run_Budget_Analysis():
 
     # Draw a golden dot at the absolute peak
     plt.scatter([Split_S], [max_phi], color='gold', s=200, edgecolor='black', zorder=5,
-                label=f'Optimal Policy (λ={Split_S})')
+                label=f'Optimal Policy (Security split = {Split_S}%)')
 
     plt.title('System Efficiency (Φ) vs. split of security', fontsize=16, fontweight='bold', pad=15)
-    plt.xlabel('Lambda (λ) : 0.0 (Pro-Infrastructure)  -->  1.0 (Pro-Wildlife)', fontsize=14)
+    plt.xlabel('Security Split: 0 -> 100', fontsize=14)
     plt.ylabel('Overall Protection Score (Φ)', fontsize=14)
 
     plt.grid(True, linestyle='--', alpha=0.5)
     plt.legend(fontsize=12, loc='lower center', frameon=True, edgecolor='black')
     plt.tight_layout()
 
-    plt.savefig('Phi_Parabola_Analysis.pdf', format='pdf', bbox_inches='tight')
+    plt.savefig(results_path("Phi_Parabola_Analysis.pdf"), format='pdf', bbox_inches='tight')
     plt.show()
 
 def Load_Run_Budget_Analysis():
-    file_path = 'Sensitivity_Results_Fast.csv'
+    file_path = results_path("Sensitivity_Results_Fast.csv")
     if not os.path.exists(file_path):
         print(f"Error: '{file_path}' not found. Please run the analysis first.")
         return
@@ -1407,7 +1428,7 @@ def Load_Run_Budget_Analysis():
 
     # Draw a golden dot at the absolute peak
     plt.scatter([Split_S], [max_phi], color='gold', s=200, edgecolor='black', zorder=5,
-                label=f'Optimal Policy (λ={Split_S})')
+                label=f'Optimal Policy (Security split = {Split_S}%)')
 
     plt.title('System Efficiency (Φ) vs. split of security', fontsize=16, fontweight='bold', pad=15)
     plt.xlabel('Security Split: 0 -> 100', fontsize=14)
@@ -1417,11 +1438,9 @@ def Load_Run_Budget_Analysis():
     plt.legend(fontsize=12, loc='lower center', frameon=True, edgecolor='black')
     plt.tight_layout()
 
-    plt.savefig('Phi_Parabola_Analysis.pdf', format='pdf', bbox_inches='tight')
+    plt.savefig(results_path("Phi_Parabola_Analysis.pdf"), format='pdf', bbox_inches='tight')
     plt.show()
 
-
-Load_Run_Budget_Analysis()
 
 #endregion
 
@@ -1817,7 +1836,7 @@ def M_Mastermap():
 
     # 5. Export as Vector Graphic (PDF)
     plt.tight_layout()
-    plt.savefig('Master_Biome_Map.pdf', format='pdf', bbox_inches='tight')
+    plt.savefig(results_path("Master_Biome_Map.pdf"), format='pdf', bbox_inches='tight')
     plt.show()
 #endregion
 
@@ -2335,7 +2354,7 @@ def HM_RiskDeltaMap():
         ax.scatter(c_e1.geometry.centroid.x, c_e1.geometry.centroid.y, color='cyan', marker='P', s=100, edgecolor='black', label='E1: Minerals', zorder=4)
     if not c_e2.empty:
         c_e2.plot(ax=ax, facecolor='none', edgecolor='red', hatch='///', linewidth=1.5, zorder=4)
-        ax.add_patch(mpatches.Patch(facecolor='none', edgecolor='red', hatch='///', label='E2: Active Burn'))
+        burn_handle = mpatches.Patch(facecolor='none', edgecolor='red', hatch='///', label='E2: Active Burn')
 
     c_x1 = grid_inside[grid_inside['Count_FP'] > 0]
     c_x2 = grid_inside[grid_inside['Count_4x4'] > 0]
@@ -2355,6 +2374,8 @@ def HM_RiskDeltaMap():
 
     handles, labels = ax.get_legend_handles_labels()
     by_label = dict(zip(labels, handles))
+    if not c_e2.empty:
+        by_label['E2: Active Burn'] = burn_handle
     ax.legend(by_label.values(), by_label.keys(), loc='center left', bbox_to_anchor=(1.05, 0.5), frameon=True, edgecolor='black')
 
     plt.title(f'Risk Delta (Mitigated - Baseline) + Master Assets [{current_season} Season]', fontsize=16, fontweight='bold')
@@ -2367,7 +2388,7 @@ def HM_RiskDeltaMap():
 
     #region Manual Generation
 def G_Biomes():
-    b_roads = gpd.read_file("etosha_roads.geojson").to_crs(epsg=32733)
+    b_roads = gpd.read_file(data_path("etosha_roads.geojson")).to_crs(epsg=32733)
 
     if 'Terrain_Type' not in grid_inside.columns:
         grid_inside['Terrain_Type'] = 'Grass Savanna'
@@ -2444,7 +2465,7 @@ def G_Biomes():
     # export_df.to_csv("manual_biomes_2.csv", index=False)  # changed name to 'manual_biomes_2' cuz I don't want to lose the real manual_biomes and I commented it to be extra safe
 
 def G_Zones():
-    b_roads = gpd.read_file("etosha_roads.geojson").to_crs(epsg=32733)
+    b_roads = gpd.read_file(data_path("etosha_roads.geojson")).to_crs(epsg=32733)
 
     color_map = {
         'Grass Savanna': '#fdbf6f',  # Orange/Yellow (Base)
@@ -2500,13 +2521,17 @@ def G_Zones():
     fig.canvas.mpl_connect('button_press_event', onclick)
     plt.show()
 
+    if input("Overwrite data/manual_zones.csv with these zones? Type 1 to save: ").strip() != "1":
+        print("Zones not saved.")
+        return
     export_df = grid_inside[['Cell_ID', 'Zone_Number']].copy()
-    export_df.to_csv("manual_zones.csv", index=False)
+    export_df.to_csv(data_path("manual_zones.csv"), index=False)
+    print("Saved data/manual_zones.csv")
 
 def G_CsvGen():
     name = input("Enter CSV name (without .csv): ").strip() + ".csv"
     print(name)
-    img = mpimg.imread('Etosha-Map-2025.jpg')
+    img = mpimg.imread(os.path.join(ASSETS_DIR, 'Etosha-Map-2025.jpg'))
 
     fig, ax = plt.subplots(figsize=(12, 8))
     ax.imshow(img)
@@ -2535,8 +2560,8 @@ def G_CsvGen():
 
     if len(coords) > 0:
         df_landmarks = pd.DataFrame(coords)
-        df_landmarks.to_csv(name, index=False)
-        print(f"\nSuccess! Saved {len(coords)} locations to {name}.")
+        df_landmarks.to_csv(data_path(name), index=False)
+        print(f"\nSuccess! Saved {len(coords)} locations to {data_path(name)}.")
     else:
         print("\nNo points were clicked. Nothing saved.")
 
@@ -2560,112 +2585,129 @@ def C_Toggle_Season():
 #endregion
 
     #region Loader Code
+def Read_Choice(prompt=""):
+    """Read a menu number. Returns -1 for anything that isn't a number."""
+    raw = input(prompt).strip()
+    try:
+        return int(raw)
+    except ValueError:
+        print("Invalid input, enter a number from the menu.")
+        return -1
+
+
+def Needs_Simulation():
+    """These outputs only exist after the optimisation has run at least once."""
+    if not simulation_ran:
+        print("\nRun the simulation first (main menu option 5). This map depends on its results.")
+        return True
+    return False
+
+
 def Heatmaps():
-    print(f"\n"
-          "1: Distance to Roads or Infrastructure Heatmaps")
+    print("\n1: Distance to Roads or Infrastructure Heatmaps")
     print("2: Forage Quality    | 3: Time to Camp")
     print("4: APS               | 5: Threat Score (Poacher)")
     print("6: Threat (Fires)    | 7: Risk")
     print("8: Baseline Park Val | 9: Delta Risk")
     print("0: Return")
-    c = int(input())
-    if c == 1:
-        Heatmaps_Distance()
-    elif c == 2:
-        HM_ForageQuality()
-    elif c == 3:
-        HM_TimeToCamp()
-    elif c == 4:
-        HM_APS()
-    elif c == 5:
-        HM_PThreatScore()
-    elif c == 6:
-        HM_FThreatScore()
-    elif c == 7:
-        HM_RiskMap()
-    elif c == 8:
-        HM_BaselineParkValue()
-    elif c == 9:
-        HM_RiskDeltaMap()
+    c = Read_Choice()
+    simple = {1: Heatmaps_Distance, 2: HM_ForageQuality, 3: HM_TimeToCamp}
+    after_sim = {4: HM_APS, 5: HM_PThreatScore, 6: HM_FThreatScore, 7: HM_RiskMap, 8: HM_BaselineParkValue, 9: HM_RiskDeltaMap}
+    if c in simple:
+        simple[c]()
+    elif c in after_sim and not Needs_Simulation():
+        after_sim[c]()
+
 
 def Heatmaps_Distance():
-    print(f"\n"
-          "1: Distance to Water | 2: Distance to Road")
+    print("\n1: Distance to Water | 2: Distance to Road")
     print("3: Distance to Camp  | 4: Distance to Boundary/Fence")
     print("5: Distance to Salt Pan")
     print("0: Return")
-    c = int(input())
-    if c == 1:
-        HM_DistanceToWater()
-    elif c == 0:
+    c = Read_Choice()
+    options = {1: HM_DistanceToWater, 2: HM_DistanceToRoad, 3: HM_DistanceToCamp, 4: HM_DistanceToBoundary, 5: HM_DistanceToSaltPan}
+    if c == 0:
         Heatmaps()
-    elif c == 2:
-        HM_DistanceToRoad()
-    elif c == 3:
-        HM_DistanceToCamp()
-    elif c == 4:
-        HM_DistanceToBoundary()
-    elif c == 5:
-        HM_DistanceToSaltPan()
+    elif c in options:
+        options[c]()
+
 
 def Maps():
-    print(f"\n"
-         f"1: Collars Map         | 2: Master Map")
+    print("\n1: Collars Map         | 2: Master Map")
     print("3: Firebreaks Map      | 4: Zone Map")
     print("5: Security Deployment | 6: Minerals Map")
     print("0: Return")
-    c = int(input())
-    if c == 1:
-        M_CollarMap()
-    elif c == 2:
-        M_Mastermap()
-    elif c == 3:
-        M_FirebreakMap()
-    elif c == 4:
-        M_ZoneMap()
-    elif c == 5:
-        M_SecurityDeploymentMap()
-    elif c == 6:
-        M_MineralMap()
+    c = Read_Choice()
+    simple = {2: M_Mastermap, 4: M_ZoneMap}
+    after_sim = {1: M_CollarMap, 3: M_FirebreakMap, 5: M_SecurityDeploymentMap, 6: M_MineralMap}
+    if c in simple:
+        simple[c]()
+    elif c in after_sim and not Needs_Simulation():
+        after_sim[c]()
+
 
 def Manual_Gen():
-    print("Enter 1 for Manual Biomes Gen, 2 for Manual CSV Gen from og map, 3 for Calculation of time to camp, 4 for Manual Zones gen, 0 to return")
-    c = int(input())
+    print("\n1: Manual Biomes Gen        | 2: Manual CSV Gen from original map")
+    print("3: Recalculate Time to Camp | 4: Manual Zones Gen")
+    print("0: Return")
+    c = Read_Choice()
+    options = {1: G_Biomes, 2: G_CsvGen, 3: Calculate_Time_To_Camp, 4: G_Zones}
+    if c in options:
+        options[c]()
+
+
+def Analysis():
+    global simulation_ran
+    print("\n1: Sensitivity analysis on lambda (λ) | 2: Budget split analysis (slow)")
+    print("3: Plot saved budget split results")
+    print("0: Return")
+    c = Read_Choice()
     if c == 1:
-        G_Biomes()
+        Run_Sensitivity_Analysis()
+        simulation_ran = True
     elif c == 2:
-        G_CsvGen()
+        Run_Budget_Analysis()
+        simulation_ran = True
     elif c == 3:
-        Calculate_Time_To_Camp()
-    elif c == 4:
-        G_Zones()
+        Load_Run_Budget_Analysis()
+
 
 def Choice():
+    global simulation_ran
     choice = -1
     while choice != 0:
-        global current_season
-
         print(f"\n--- ETOSHA SIMULATOR (Season: {current_season}) ---")
         print("1: Heatmaps          | 2: Other Maps")
         print("3: Manual Generation | 4: Toggle Season")
-        print("5: Run Simulation    | 0: Exit")
+        print("5: Run Simulation    | 6: Analysis")
+        print("0: Exit")
         try:
-            choice = int(input())
-            if choice == 2:
-                Maps()
-            elif choice == 1:
+            choice = Read_Choice()
+        except (EOFError, KeyboardInterrupt):
+            print()
+            break
+        try:
+            if choice == 1:
                 Heatmaps()
+            elif choice == 2:
+                Maps()
             elif choice == 3:
                 Manual_Gen()
             elif choice == 4:
-                Toggle_Season()
+                C_Toggle_Season()
             elif choice == 5:
                 Run_Master_Simulation()
-        except ValueError:
-            print("Invalid Input")
+                simulation_ran = True
+            elif choice == 6:
+                Analysis()
+        except (EOFError, KeyboardInterrupt):
+            print()
+            break
 
 
-Choice()
+simulation_ran = False
+
+if __name__ == "__main__":
+    Choice()
 #endregion
 #endregion
-
