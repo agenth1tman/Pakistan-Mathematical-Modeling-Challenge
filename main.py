@@ -131,7 +131,7 @@ waterholes['Pump_Status'] = np.where(waterholes['Validity'] == 'P', 1, 0)
 waterholes['Change'] = 0
 
 all_camps = camps.geometry.union_all()
-all_waterholes = waterholes.geometry.union_all()
+all_waterholes = waterholes[waterholes['Pump_Status'] == 1].geometry.union_all()  # only waterholes that have water in the current season
 all_gates = gates.geometry.union_all()
 
 grid_inside['Dist_to_Road'] = grid_inside.geometry.centroid.distance(all_roads) / 1000.0
@@ -367,9 +367,9 @@ def Calculate_k_T50():
 
     T_Slack_dict = {
         'Salt Pan': 3.0,
-        'Grass Savannah': 1.5,
-        'Shrub Savannah': 0.75,
-        'Tree Savannah': 0.25
+        'Grass Savanna': 1.5,
+        'Shrub Savanna': 0.75,
+        'Tree Savanna': 0.25
     }
     grid_inside['T_Slack'] = grid_inside['Terrain_Type'].map(T_Slack_dict)
     grid_inside['k'] = 2.89 / grid_inside['T_Slack']
@@ -1134,6 +1134,8 @@ def Calculate_Protection_Score():
     return phi, Poach_Risk_Remaining, Fire_Risk_Remaining
 
 def Run_Master_Simulation():
+    Reset_Simulation_State()  # so running it twice doesn't stack deployments on top of each other
+
     total_budget = 2000000
     reserve_budget = total_budget * 0.10  # reserve 10% budget for C_Reserve
     total_budget -= reserve_budget
@@ -1149,7 +1151,7 @@ def Run_Master_Simulation():
     Remaining_Security_Budget = Pre_Deploy_Jeeps(Budget_Security)
 
     remains = Calculate_Wildfires_Threat(Budget_Wildfires)
-    Budget_Security += remains * split_s / (split_s + split_e)
+    Remaining_Security_Budget += remains * split_s / (split_s + split_e)
     Budget_Terrain += remains * split_e / (split_s + split_e)
 
     Distribute_Collars()
@@ -1275,7 +1277,7 @@ def Run_Sensitivity_Analysis():
     Remaining_Security_Budget = Pre_Deploy_Jeeps(Budget_Security)
 
     remains_fire = Calculate_Wildfires_Threat(Budget_Wildfires)
-    Budget_Security += remains_fire * split_s / (split_s + split_e)
+    Remaining_Security_Budget += remains_fire * split_s / (split_s + split_e)
     Budget_Terrain_Base += remains_fire * split_e / (split_s + split_e)
 
     Distribute_Collars()
@@ -1309,8 +1311,8 @@ def Run_Sensitivity_Analysis():
         })
 
     results_df = pd.DataFrame(sensitivity_results)
-    results_df.to_csv(results_path("Sensitivity_Results_Fast.csv"), index=False)
-    print(f"\nData successfully saved to {results_path('Sensitivity_Results_Fast.csv')}")
+    results_df.to_csv(results_path("Sensitivity_Lambda_Results.csv"), index=False)
+    print(f"\nData successfully saved to {results_path('Sensitivity_Lambda_Results.csv')}")
 
     plt.figure(figsize=(10, 6))
 
@@ -1334,7 +1336,7 @@ def Run_Sensitivity_Analysis():
     plt.tight_layout()
 
     # Save it directly as a high-res Vector Graphic for your paper!
-    plt.savefig(results_path("Phi_Parabola_Analysis.pdf"), format='pdf', bbox_inches='tight')
+    plt.savefig(results_path("Phi_Lambda_Analysis.pdf"), format='pdf', bbox_inches='tight')
     plt.show()
 
 def Run_Budget_Analysis():
@@ -1360,7 +1362,7 @@ def Run_Budget_Analysis():
         Remaining_Security_Budget = Pre_Deploy_Jeeps(Budget_Security)
 
         remains = Calculate_Wildfires_Threat(Budget_Wildfires)
-        Budget_Security += remains * split_s / (split_s + split_e)
+        Remaining_Security_Budget += remains * split_s / (split_s + split_e)
         Budget_Terrain += remains * split_e / (split_s + split_e)
 
         Distribute_Collars()
